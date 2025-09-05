@@ -1,0 +1,132 @@
+
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Grid Grab Game</title>
+		<style>
+			#grid {
+			display: grid;
+			grid-template-columns: repeat(10, 40px);
+			grid-template-rows: repeat(10, 40px);
+			gap: 2px;
+			}
+			.cell {
+			width: 40px;
+			height: 40px;
+			border: 1px solid #ccc;
+			cursor: pointer;
+			text-align: center;
+			line-height: 40px;
+			font-size: 10px;
+			color: white;
+			}
+			#scoreboard {
+			margin-top: 10px;
+			}
+		</style>
+		<script src="/socket.io/socket.io.js"></script>
+	</head>
+	<body>
+		<h1>Grid Grab</h1>
+		<div id="lobby">
+			<input id="playerName" placeholder="Your name" />
+			<input id="playerColor" type="color" value="#88f" />
+			<button onclick="registerPlayer()">Join Game</button>
+			<br><button onclick="startGame()" id="start-game" style="display: none;">Start Game</button>
+		</div>
+		<div id="game-board" style="display: none;">
+			<strong>Time Left: <span id="time">30</span></strong>
+			<div id="grid"></div>
+		</div>
+
+		<div id="end-round" style="display: none;">
+			<div id="scoreboard"></div>
+			<br><button onclick="startGame()">Restart Game</button>
+			<br><button onclick="goToLobby()">Back To Lobby</button>
+		</div>
+
+
+			<p id="status"></p>
+
+		<script>
+			const socket = io();
+			const gridEl = document.getElementById('grid');
+			const statusEl = document.getElementById('status');
+			const scoreboardEl = document.getElementById('scoreboard');
+			let playerId = null;
+			let playerName = '';
+			let playerColor = '';
+
+			function registerPlayer() {
+				console.log("registered")
+				playerName = document.getElementById('playerName').value;
+				if (playerName == "Nick"){
+					document.getElementById("start-game").style.display = 'block';
+				}
+				playerColor = document.getElementById('playerColor').value;
+				socket.emit('register', { name: playerName, color: playerColor });
+			}
+
+			function goToLobby() {
+				document.getElementById("lobby").style.display = "block";
+				document.getElementById("game-board").style.display = "none";
+				document.getElementById("end-round").style.display = "none";
+			}
+
+			function startGame() {
+				console.log("started")
+				socket.emit('round-start');
+			}
+
+			socket.on('init', ({ grid, playerId: id, players }) => {
+				playerId = id;
+				renderGrid(grid, players);
+			});
+
+
+			socket.on('new-round', ({ grid, players }) => {
+				document.getElementById("time").innerText = 30;
+				document.getElementById("lobby").style.display = "none";
+				document.getElementById("game-board").style.display = "block";
+				document.getElementById("end-round").style.display = "none";
+				statusEl.textContent = 'New round started!';
+				renderGrid(grid, players);
+			});
+
+			socket.on('update-time', (time) => {
+				document.getElementById("time").innerText = time;
+			});
+
+			socket.on('update-grid', ({ index, playerId, color, name }) => {
+				const cell = document.getElementById(`cell-${index}`);
+				cell.style.backgroundColor = color;
+				cell.textContent = name;
+			});
+
+			socket.on('round-over', ({ winnerId, winnerName, score, scoreboard }) => {
+				statusEl.textContent = `Round Over! Winner: ${winnerName} with ${score} squares.`;
+				scoreboardEl.innerHTML = '<h3>Scoreboard</h3>' + scoreboard.map(p => `<div style="color:${p.color}">${p.name}: ${p.score}</div>`).join('');
+				document.getElementById("lobby").style.display = "none";
+				document.getElementById("game-board").style.display = "none";
+				document.getElementById("end-round").style.display = "block";
+			});
+
+			function renderGrid(grid, players) {
+				gridEl.innerHTML = '';
+				grid.forEach((owner, i) => {
+					const cell = document.createElement('div');
+					cell.className = 'cell';
+					cell.id = `cell-${i}`;
+					if (owner && players[owner]) {
+					cell.style.backgroundColor = players[owner].color;
+					cell.textContent = players[owner].name;
+					}
+					cell.onclick = () => {
+					socket.emit('claim-square', i);
+					};
+					gridEl.appendChild(cell);
+				});
+			}
+		</script>
+	</body>
+</html>
